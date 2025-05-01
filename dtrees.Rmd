@@ -1,0 +1,260 @@
+---
+title: "Lab 5: Decision Tress"
+author: "Juliana Vinluan"
+date: "2025-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+There is a discrepancy between "not survived" and "not alive" patients. 
+"Not survived" refers to patients who did not survive beyond the study's specified time frame, whereas "not alive" includes all deceased patients, regardless of the time frame.
+The distinction is important for modeling survivability rates.
+
+During preprocessing, the authors handled missing data, removed irrelevant features, and converted categorical variables into numerical form. 
+They also normalized continuous data and ensured class balance where needed.
+
+The authors used information gain and statistical tests to evaluate the predictive power of different attributes. 
+Features with higher information gain were considered more influential in predicting survivability.
+
+Best-performing learning algorithm:
+
+The C4.5 decision tree algorithm outperformed other models, such as Naïve Bayes and backpropagation neural networks, in terms of accuracy and interpretability.
+
+Yes, the dataset contained missing values. The authors handled this by either imputing missing values or excluding incomplete records when necessary.
+
+
+##### First, I will import the data set and load a library package to use later in this report.
+
+
+```{r load-packages}
+# Import data set
+cardata <- read.table("car.data", header = FALSE, sep = ",", stringsAsFactors = TRUE)
+healthydata <- read.csv("NPHA-doctor-visits.csv", header = TRUE)
+
+# Include library
+library(rpart) # Decision tree algorithm
+library(rpart.plot) # Decision tree visualization
+library(caret) # Classification and regression training
+library(ggplot2)  # Visualization
+library(dplyr)    # Data manipulation
+
+# Assign column names
+colnames(cardata) <- c("buying", "maint", "doors", "persons", "lug_boot", "safety", "acceptability")
+colnames(healthydata) <- c("visits", "age", "phyiscal_health", "mental_health", "dental_health", "employment", "stress_prevents_sleeping", "medication_prevents_sleeping", "pain_prevents_sleeping", "bathroom_prevents_sleeping", "unknown_prevents_sleeping", "trouble_sleeping", "prescription_sleep_meds", "race", "gender")
+```
+
+## Data Preprocessing
+```{r check-data}
+head(cardata)   # View the first few rows
+str(cardata)    # Check the structure (columns, types)
+dim(cardata)    # Check dimensions (rows, columns)
+# Check for missing values
+colSums(is.na(cardata))
+```
+```{r}
+# Convert categorical variables to factors
+cardata[] <- lapply(cardata, as.factor)
+
+# Split into training and test sets
+set.seed(123)
+trainIndex <- caret::createDataPartition(cardata$acceptability, p = 0.7, list = FALSE)
+trainSet <- cardata[trainIndex, ]
+testSet <- cardata[-trainIndex, ]
+```
+
+## Build Decision Tree
+```{r}
+tree_model <- rpart(acceptability ~ ., data = trainSet, method = "class",
+                    parms = list(split = "information"))
+```
+
+## Visualize Decision Tree
+```{r}
+rpart.plot(tree_model)
+```
+
+## Compute Classification Error *before pruning*
+```{r}
+pred_train <- factor(predict(tree_model, trainSet, type = "class"), levels = levels(trainSet$acceptability))
+pred_test <- factor(predict(tree_model, testSet, type = "class"), levels = levels(trainSet$acceptability))
+
+train_error <- mean(pred_train != trainSet$acceptability)
+test_error <- mean(pred_test != testSet$acceptability)
+
+cat("Training Error:", train_error, "\n")
+cat("Test Error:", test_error, "\n")
+```
+
+## Prune the Tree
+```{r}
+printcp(tree_model) # Display complexity parameter table
+plotcp(tree_model)  # Visualize cp graph
+# Choose optimal cp value (e.g., lowest cross-validation error)
+best_cp <- tree_model$cptable[which.min(tree_model$cptable[, "xerror"]), "CP"] #After finding the index of the minimum xerror, this line extracts the corresponding CP value.
+pruned_tree <- prune(tree_model, cp = best_cp) # Prune the tree using the best CP value
+```
+
+## Visualize/Compare Original Tree and Pruned Tree
+```{r}
+rpart.plot(tree_model)
+```
+```{r}
+rpart.plot(pruned_tree)
+```
+
+## Compute Classification Error *after pruning*
+```{r}
+pred_train_pruned <- factor(predict(pruned_tree, trainSet, type = "class"), levels = levels(trainSet$acceptability))
+pred_test_pruned <- factor(predict(pruned_tree, testSet, type = "class"), levels = levels(trainSet$acceptability))
+
+train_error_pruned <- mean(pred_train_pruned != trainSet$acceptability)
+test_error_pruned <- mean(pred_test_pruned != testSet$acceptability)
+
+cat("Pruned Training Error:", train_error_pruned, "\n")
+cat("Pruned Test Error:", test_error_pruned, "\n")
+```
+
+## Repeat with Gini Index
+```{r}
+tree_model_gini <- rpart(acceptability ~ ., data = trainSet, method = "class", 
+                    parms = list(split = "gini"))
+```
+
+## Visualize Decision Tree (Gini)
+```{r}
+rpart.plot(tree_model_gini)
+```
+
+## Compute Classification Error (Gini)
+```{r}
+pred_train_gini <- predict(tree_model_gini, trainSet, type = "class")
+pred_test_gini <- predict(tree_model_gini, testSet, type = "class")
+
+train_error_gini <- mean(pred_train_gini != trainSet$acceptability)
+test_error_gini <- mean(pred_test_gini != testSet$acceptability)
+
+cat("Training Error (Gini):", train_error_gini, "\n")
+cat("Test Error (Gini):", test_error_gini, "\n")
+```
+
+## Prune the Tree (Gini)
+```{r}
+printcp(tree_model_gini) # Display complexity parameter table
+plotcp(tree_model_gini)  # Visualize cp graph
+
+# Choose optimal cp value (e.g., lowest cross-validation error)
+best_cp_gini <- tree_model_gini$cptable[which.min(tree_model_gini$cptable[, "xerror"]), "CP"]
+pruned_tree_gini <- prune(tree_model_gini, cp = best_cp_gini)
+print(best_cp_gini)
+```
+
+## Visualize Pruned Tree (Gini)
+```{r}
+rpart.plot(pruned_tree_gini)
+```
+
+## Comparison and Conclusion
+Summarize the results and discuss whether there are substantial differences between using Information Gain and Gini Index. Note any trends or surprising outcomes.
+
+## Data Preprocessing for Healthy Data
+```{r check-healthy-data}
+head(healthydata)   # View the first few rows
+str(healthydata)    # Check the structure (columns, types)
+dim(healthydata)    # Check dimensions (rows, columns)
+# Check for missing values
+colSums(is.na(healthydata))
+```
+```{r}
+# Convert categorical variables to factors
+healthydata[] <- lapply(healthydata, as.factor)
+
+# Split into training and test sets
+set.seed(123)
+trainIndex2 <- createDataPartition(healthydata$visits, p = 0.7, list = FALSE)
+trainSet2 <- healthydata[trainIndex2, ]
+testSet2 <- healthydata[-trainIndex2, ]
+```
+
+
+## Build Decision Tree (Information Gain)
+```{r}
+tree_model_healthy <- rpart(visits ~ ., data = trainSet2, method = "class",
+                    parms = list(split = "information"))
+ls()
+```
+
+## Visualize Decision Tree
+```{r}
+rpart.plot(tree_model_healthy, box.palette = "Blues")
+```
+
+## Compute Classification Error
+```{r}
+pred_trained_info <- factor(predict(tree_model_healthy, trainSet2, type = "class"), 
+                          levels = levels(trainSet2$visits))
+pred_testing_info <- factor(predict(tree_model_healthy, testSet2, type = "class"), 
+                         levels = levels(testSet2$visits))
+
+trained_error_info <- mean(pred_trained_info != trainSet2$visits)
+testing_error_info <- mean(pred_testing_info != testSet2$visits)
+
+cat("Training Error (Info Gain):", trained_error_info, "\n")
+cat("Test Error (Info Gain):", testing_error_info, "\n")
+```
+
+## Prune the Tree
+```{r}
+printcp(tree_model_healthy) # Display complexity parameter table
+plotcp(tree_model_healthy)  # Visualize cp graph
+
+# Choose optimal cp value (e.g., lowest cross-validation error)
+best_cp_info <- tree_model_healthy$cptable[which.min(tree_model_healthy$cptable[, "xerror"]), "CP"]
+pruned_tree_healthy <- prune(tree_model_healthy, cp = best_cp_info)
+
+```
+
+## Visualize Pruned Tree
+```{r}
+rpart.plot(pruned_tree_healthy, box.palette = "Blues")
+```
+
+## Compute Classification Error After Pruning
+```{r}
+pred_train_pruned_info <- predict(pruned_tree_healthy, trainSet2, type = "class")
+pred_test_pruned_info <- predict(pruned_tree_healthy, testSet2, type = "class")
+
+train_error_pruned_info <- mean(pred_train_pruned_info != trainSet2$visits)
+test_error_pruned_info <- mean(pred_test_pruned_info != testSet2$visits)
+
+cat("Pruned Training Error (Info Gain):", train_error_pruned_info, "\n")
+cat("Pruned Test Error (Info Gain):", test_error_pruned_info, "\n")
+```
+
+## Conclusion
+The pruned decision tree collapsed to just a root node, it may suggest:
+The Predictive Power of Features is Weak
+The features may not have strong relationships with the target variable.
+Check the variable importance to see if any features are contributing to the model.
+
+```{r}
+varImp(tree_model_healthy)
+```
+
+What This Tells You About the Data
+Employment, Medication, and Physical Health are key predictors of sleep issues.
+
+Demographics (Race) and Prescription Sleep Meds also contribute significantly.
+
+Age and Gender had no impact.
+
+Possible Next steps:
+Feature Selection: I might consider dropping age and gender since they had no effect.
+
+Further Analysis: Investigate why pain_prevents_sleeping had such a low score—does the dataset properly capture pain-related sleep disturbances?
+
+Try a Different Model: Another model like Random Forest might yield better results.
